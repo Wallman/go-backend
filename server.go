@@ -2,6 +2,7 @@ package main
 
 import (
 	"go-backend/transcribe"
+	"log"
 	"net/http"
 )
 
@@ -16,5 +17,6 @@ func NewServer(userController *transcribe.Controller) *Server {
 }
 
 func (s *Server) Run(addr string) error {
+	log.Printf("Server started on %s", addr)
 	return http.ListenAndServe(addr, s.mux)
 }
