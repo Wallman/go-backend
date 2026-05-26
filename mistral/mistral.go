@@ -29,9 +29,11 @@ func (m Mistral) Transcribe(ctx context.Context, uri string) (TranscribeResponse
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	if err := writer.WriteField("model", "voxtral-mini-latest"); err != nil {
+		writer.Close()
 		return TranscribeResponse{}, err
 	}
 	if err := writer.WriteField("file_url", uri); err != nil {
+		writer.Close()
 		return TranscribeResponse{}, err
 	}
 	if err := writer.Close(); err != nil {
@@ -60,9 +62,9 @@ func (m Mistral) Transcribe(ctx context.Context, uri string) (TranscribeResponse
 	return response, nil
 }
 
-func NewMistral() *Mistral {
+func NewMistral(baseURL string) *Mistral {
 	return &Mistral{
-		baseURL: "https://api.mistral.ai/v1",
+		baseURL: baseURL,
 		http:    &http.Client{},
 	}
 }

@@ -19,8 +19,6 @@ type transcribeRequest struct {
 	Uri string `json:"uri" validate:"required,uri"`
 }
 
-var userId = "b9c43ba1-9572-4aac-b945-ccab71c932b5"
-
 func NewController(repo *user.Repository, mistral *mistral.Mistral) *Controller {
 	return &Controller{repo: repo, mistral: mistral}
 }
@@ -28,6 +26,11 @@ func NewController(repo *user.Repository, mistral *mistral.Mistral) *Controller 
 func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /transcribe", c.transcribe)
 	mux.HandleFunc("GET /tokenUsage", c.tokenUsage)
+}
+
+func (c *Controller) userID(r *http.Request) string {
+	// temp hack
+	return r.Header.Get("X-User-ID")
 }
 
 func (c *Controller) transcribe(w http.ResponseWriter, r *http.Request) {
@@ -41,12 +44,12 @@ func (c *Controller) transcribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	c.repo.AddTokensUsed(r.Context(), response.Usage.TotalTokens, userId)
+	c.repo.AddTokensUsed(r.Context(), response.Usage.TotalTokens, c.userID(r))
 	w.Write([]byte(response.Text))
 }
 
 func (c *Controller) tokenUsage(w http.ResponseWriter, r *http.Request) {
-	usr, err := c.repo.Get(r.Context(), userId)
+	usr, err := c.repo.Get(r.Context(), c.userID(r))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, err.Error(), http.StatusNotFound)
