@@ -51,13 +51,7 @@ func (c *Controller) transcribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := c.store.ExecTx(r.Context(), func(q *db.Queries) error {
-		_, err := q.AddTokensUsed(r.Context(), db.AddTokensUsedParams{
-			ID:         id,
-			TokensUsed: int32(response.Usage.TotalTokens),
-		})
-		return err
-	}); err != nil {
+	if _, err := c.store.AddTokensUsed(r.Context(), id, int32(response.Usage.TotalTokens)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
