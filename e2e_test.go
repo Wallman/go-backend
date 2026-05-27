@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,11 +22,10 @@ import (
 	"go-backend/mistral"
 	"go-backend/otel"
 	"go-backend/transcribe"
-	"go-backend/user"
 )
 
 var (
-	DB      *sql.DB
+	DB      *db.Queries
 	baseURL string
 )
 
@@ -56,10 +54,11 @@ func TestMain(m *testing.M) {
 	port, _ := postgres.MappedPort(ctx, "5432/tcp")
 	os.Setenv("DATABASE_URL", fmt.Sprintf("postgres://postgres:postgres@%s:%s/postgres?sslmode=disable", host, port.Port()))
 
-	DB, err = db.Connect(ctx)
+	database, err := db.Connect(ctx)
 	if err != nil {
 		log.Fatal("connect db: ", err)
 	}
+	DB = db.New(database)
 
 	mistralStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -69,7 +68,7 @@ func TestMain(m *testing.M) {
 		})
 	}))
 
-	controller := transcribe.NewController(user.NewUserRepository(DB), mistral.NewMistral(mistralStub.URL))
+	controller := transcribe.NewController(DB, mistral.NewMistral(mistralStub.URL))
 	appServer := httptest.NewServer(NewServer(controller).Handler())
 	baseURL = appServer.URL
 
@@ -77,23 +76,23 @@ func TestMain(m *testing.M) {
 
 	appServer.Close()
 	mistralStub.Close()
-	DB.Close()
+	database.Close()
 	postgres.Terminate(ctx)
 	os.Exit(code)
 }
 
-func createUser(t *testing.T) string {
+func createUser(t *testing.T) uuid.UUID {
 	t.Helper()
-	userID := uuid.New().String()
-	_, err := DB.ExecContext(context.Background(), "INSERT INTO users (id, tokens_used) VALUES ($1, 0)", userID)
+	userID := uuid.New()
+	_, err := DB.CreateUser(t.Context(), userID)
 	require.NoError(t, err)
 	return userID
 }
 
-func tokenUsage(t *testing.T, userID string) int {
+func tokenUsage(t *testing.T, userID uuid.UUID) int {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodGet, baseURL+"/tokenUsage", nil)
-	req.Header.Set("X-User-ID", userID)
+	req.Header.Set("X-User-ID", userID.String())
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -110,7 +109,7 @@ func TestTranscribe(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/transcribe", strings.NewReader(`{"uri":"https://example.com/audio.mp3"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-User-ID", userID)
+	req.Header.Set("X-User-ID", userID.String())
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -126,7 +125,7 @@ func TestTokenUsage(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/transcribe", strings.NewReader(`{"uri":"https://example.com/audio.mp3"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-User-ID", userID)
+	req.Header.Set("X-User-ID", userID.String())
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
@@ -140,7 +139,7 @@ func TestMetrics(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/transcribe", strings.NewReader(`{"uri":"https://example.com/audio.mp3"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-User-ID", userID)
+	req.Header.Set("X-User-ID", userID.String())
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()

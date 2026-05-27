@@ -4,23 +4,25 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"go-backend/db"
 	"go-backend/mistral"
-	"go-backend/user"
 	"net/http"
 	"strconv"
+
+	"github.com/google/uuid"
 )
 
 type Controller struct {
 	mistral *mistral.Mistral
-	repo    *user.Repository
+	queries *db.Queries
 }
 
 type transcribeRequest struct {
 	Uri string `json:"uri" validate:"required,uri"`
 }
 
-func NewController(repo *user.Repository, mistral *mistral.Mistral) *Controller {
-	return &Controller{repo: repo, mistral: mistral}
+func NewController(queries *db.Queries, mistral *mistral.Mistral) *Controller {
+	return &Controller{queries: queries, mistral: mistral}
 }
 
 func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
@@ -28,9 +30,9 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /tokenUsage", c.tokenUsage)
 }
 
-func (c *Controller) userID(r *http.Request) string {
+func (c *Controller) userID(r *http.Request) (uuid.UUID, error) {
 	// temp hack
-	return r.Header.Get("X-User-ID")
+	return uuid.Parse(r.Header.Get("X-User-ID"))
 }
 
 func (c *Controller) transcribe(w http.ResponseWriter, r *http.Request) {
@@ -44,12 +46,25 @@ func (c *Controller) transcribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	c.repo.AddTokensUsed(r.Context(), response.Usage.TotalTokens, c.userID(r))
-	w.Write([]byte(response.Text))
+	id, err := c.userID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_, _ = c.queries.AddTokensUsed(r.Context(), db.AddTokensUsedParams{
+		ID:         id,
+		TokensUsed: int32(response.Usage.TotalTokens),
+	})
+	_, _ = w.Write([]byte(response.Text))
 }
 
 func (c *Controller) tokenUsage(w http.ResponseWriter, r *http.Request) {
-	usr, err := c.repo.Get(r.Context(), c.userID(r))
+	id, err := c.userID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	usr, err := c.queries.GetUser(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -58,5 +73,5 @@ func (c *Controller) tokenUsage(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	_, _ = w.Write([]byte(strconv.Itoa(usr.TokensUsed)))
+	_, _ = w.Write([]byte(strconv.Itoa(int(usr.TokensUsed))))
 }
