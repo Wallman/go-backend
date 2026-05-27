@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	DB      *db.Queries
+	DB      *db.Store
 	baseURL string
 )
 
@@ -58,7 +58,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatal("connect db: ", err)
 	}
-	DB = db.New(database)
+	DB = db.NewStore(database)
 
 	mistralStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
