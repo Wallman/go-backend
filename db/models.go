@@ -11,4 +11,5 @@ import (
 type User struct {
 	ID         uuid.UUID `json:"id"`
 	TokensUsed int32     `json:"tokens_used"`
+	Version    int32     `json:"version"`
 }

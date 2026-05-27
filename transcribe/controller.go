@@ -14,15 +14,15 @@ import (
 
 type Controller struct {
 	mistral *mistral.Mistral
-	queries *db.Queries
+	store   *db.Store
 }
 
 type transcribeRequest struct {
 	Uri string `json:"uri" validate:"required,uri"`
 }
 
-func NewController(queries *db.Queries, mistral *mistral.Mistral) *Controller {
-	return &Controller{queries: queries, mistral: mistral}
+func NewController(store *db.Store, mistral *mistral.Mistral) *Controller {
+	return &Controller{store: store, mistral: mistral}
 }
 
 func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
@@ -51,10 +51,10 @@ func (c *Controller) transcribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _ = c.queries.AddTokensUsed(r.Context(), db.AddTokensUsedParams{
-		ID:         id,
-		TokensUsed: int32(response.Usage.TotalTokens),
-	})
+	if _, err := c.store.AddTokensUsed(r.Context(), id, int32(response.Usage.TotalTokens)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	_, _ = w.Write([]byte(response.Text))
 }
 
@@ -64,7 +64,7 @@ func (c *Controller) tokenUsage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	usr, err := c.queries.GetUser(r.Context(), id)
+	usr, err := c.store.GetUser(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, err.Error(), http.StatusNotFound)

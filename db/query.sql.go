@@ -12,39 +12,40 @@ import (
 )
 
 const addTokensUsed = `-- name: AddTokensUsed :one
-UPDATE users SET tokens_used = tokens_used + $1 WHERE id = $2 RETURNING id, tokens_used
+UPDATE users SET tokens_used = tokens_used + $1, version = version + 1 WHERE id = $2 AND version = $3 RETURNING id, tokens_used, version
 `
 
 type AddTokensUsedParams struct {
 	TokensUsed int32     `json:"tokens_used"`
 	ID         uuid.UUID `json:"id"`
+	Version    int32     `json:"version"`
 }
 
 func (q *Queries) AddTokensUsed(ctx context.Context, arg AddTokensUsedParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, addTokensUsed, arg.TokensUsed, arg.ID)
+	row := q.db.QueryRowContext(ctx, addTokensUsed, arg.TokensUsed, arg.ID, arg.Version)
 	var i User
-	err := row.Scan(&i.ID, &i.TokensUsed)
+	err := row.Scan(&i.ID, &i.TokensUsed, &i.Version)
 	return i, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, tokens_used) VALUES ($1, 0) RETURNING id, tokens_used
+INSERT INTO users (id, tokens_used, version) VALUES ($1, 0, 0) RETURNING id, tokens_used, version
 `
 
 func (q *Queries) CreateUser(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRowContext(ctx, createUser, id)
 	var i User
-	err := row.Scan(&i.ID, &i.TokensUsed)
+	err := row.Scan(&i.ID, &i.TokensUsed, &i.Version)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, tokens_used FROM users WHERE id = $1
+SELECT id, tokens_used, version FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRowContext(ctx, getUser, id)
 	var i User
-	err := row.Scan(&i.ID, &i.TokensUsed)
+	err := row.Scan(&i.ID, &i.TokensUsed, &i.Version)
 	return i, err
 }

@@ -24,7 +24,7 @@ func main() {
 	defer func(database *sql.DB) {
 		_ = database.Close()
 	}(database)
-	controller := transcribe.NewController(db.New(database), mistral.NewMistral("https://api.mistral.ai/v1"))
+	controller := transcribe.NewController(db.NewStore(database), mistral.NewMistral("https://api.mistral.ai/v1"))
 	server := NewServer(controller)
 	if err := server.Run(":8080"); err != nil {
 		log.Fatal(err)
