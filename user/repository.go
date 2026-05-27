@@ -16,20 +16,12 @@ type User struct {
 
 func (r *Repository) Get(ctx context.Context, userID string) (User, error) {
 	row := r.db.QueryRowContext(ctx, "SELECT id, tokens_used FROM users WHERE id = $1", userID)
-	user, err := toUser(row)
-	if err != nil {
-		return user, err
-	}
-	return user, nil
+	return toUser(row)
 }
 
 func (r *Repository) AddTokensUsed(ctx context.Context, tokens int, userID string) (User, error) {
 	row := r.db.QueryRowContext(ctx, "UPDATE users SET tokens_used = tokens_used + $1 WHERE id = $2 RETURNING id, tokens_used", tokens, userID)
-	user, err := toUser(row)
-	if err != nil {
-		return user, err
-	}
-	return user, nil
+	return toUser(row)
 }
 
 func toUser(row *sql.Row) (User, error) {
@@ -41,5 +33,5 @@ func toUser(row *sql.Row) (User, error) {
 }
 
 func NewUserRepository(db *sql.DB) *Repository {
-	return &Repository{db}
+	return &Repository{db: db}
 }

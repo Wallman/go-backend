@@ -14,12 +14,14 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"go-backend/db"
 	"go-backend/mistral"
+	"go-backend/otel"
 	"go-backend/transcribe"
 	"go-backend/user"
 )
@@ -31,6 +33,11 @@ var (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
+	shutdown, err := otel.Setup()
+	if err != nil {
+		log.Fatal("setup otel: ", err)
+	}
+	defer shutdown()
 
 	postgres, err := testcontainers.Run(
 		ctx, "postgres:17",
@@ -126,4 +133,29 @@ func TestTokenUsage(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	require.Equal(t, 42, tokenUsage(t, userID))
+}
+
+func TestMetrics(t *testing.T) {
+	userID := createUser(t)
+
+	req, _ := http.NewRequest(http.MethodPost, baseURL+"/transcribe", strings.NewReader(`{"uri":"https://example.com/audio.mp3"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-ID", userID)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	metricsResp, err := http.Get(baseURL + "/metrics")
+	require.NoError(t, err)
+	defer metricsResp.Body.Close()
+	require.Equal(t, http.StatusOK, metricsResp.StatusCode)
+
+	body, err := io.ReadAll(metricsResp.Body)
+	require.NoError(t, err)
+	metrics := string(body)
+
+	assert.Contains(t, metrics, "http_server_request_duration_seconds", "HTTP server duration metric missing")
+	assert.Contains(t, metrics, "http_client_request_duration_seconds", "HTTP client (Mistral) duration metric missing")
+	assert.Contains(t, metrics, "db_sql_latency_milliseconds", "DB query duration metric missing")
+	assert.Contains(t, metrics, "db_sql_connection_open", "DB connection pool metric missing")
 }

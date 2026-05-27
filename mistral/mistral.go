@@ -9,6 +9,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type Mistral struct {
@@ -29,11 +31,11 @@ func (m Mistral) Transcribe(ctx context.Context, uri string) (TranscribeResponse
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	if err := writer.WriteField("model", "voxtral-mini-latest"); err != nil {
-		writer.Close()
+		_ = writer.Close()
 		return TranscribeResponse{}, err
 	}
 	if err := writer.WriteField("file_url", uri); err != nil {
-		writer.Close()
+		_ = writer.Close()
 		return TranscribeResponse{}, err
 	}
 	if err := writer.Close(); err != nil {
@@ -49,7 +51,9 @@ func (m Mistral) Transcribe(ctx context.Context, uri string) (TranscribeResponse
 	if err != nil {
 		return TranscribeResponse{}, err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		_ = Body.Close()
+	}(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return TranscribeResponse{}, fmt.Errorf("non-OK HTTP response: %d %s", resp.StatusCode, string(bodyBytes))
@@ -65,6 +69,6 @@ func (m Mistral) Transcribe(ctx context.Context, uri string) (TranscribeResponse
 func NewMistral(baseURL string) *Mistral {
 	return &Mistral{
 		baseURL: baseURL,
-		http:    &http.Client{},
+		http:    &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
 	}
 }
